@@ -1,10 +1,8 @@
 %% M Subbir Parvej
-%matlab R2020b
+%matlab R2020b is recommended. Other version may create issue with uploading file. 
+%If you use other newer versions of Matlab, modify the way of data input
 % MicroSquisher_Spheroids_Hertz.m
-% Modified from: 
-    % Rachel Dass
-    % MicroSquisher_Combined.m
-    %rov : updated Nov 20, 2024
+%rov : updated Nov 20, 2024
 
 %% This code finds sample modulus by fitting a Hertz curve to the raw force values from the Microsquisher
 close all;clear all;clc
