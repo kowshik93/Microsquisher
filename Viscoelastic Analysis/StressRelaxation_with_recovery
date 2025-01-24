@@ -1,0 +1,181 @@
+%% M Subbir Parvej
+% March 3, 2024
+%F_o = F_ss + v1 * exp(-(t/v2)) has been turned into
+%ln(F_o - F_ss)= ln(v1)- t/v2
+%F_o is force at any time and F_ss is steady state force
+%v1 and v2 are fitting parameters
+%plot between ln(F_o - F_ss) and t gives v1 and v2
+% same for E
+%% Stress-Relaxation Curve Fitting
+clf
+clear
+clc
+close all
+files = dir;
+names = [];
+datas = zeros(7,size(files,1)-2);
+for sheet = 3: size(files,1)
+    
+    names =[names string(strcat(files(sheet).name))];
+    File1 = xlsread(strcat(files(sheet).name));
+    
+    % fiding where to start extraction
+    figure(1)
+    Force_All = File1(:,2); %importing
+    Indentation_all =  File1(:,4)- File1(:,3);  %importing
+    Max_Force_Index = find(Force_All == max(Force_All)); %finding where the force is max
+    index = 1: length(Indentation_all);
+    figure(1)
+    plot(index, Force_All);
+    hold on
+    plot(Max_Force_Index,Force_All(Max_Force_Index),'ks');
+    xlabel('Index')
+    ylabel('Force, uN')
+    Min_Analysis_index = Max_Force_Index;
+    %manually select where is the max force by clicking
+    disp('Please click on the steady state force.');
+    [AS, ~] = ginput(1); %taking input
+    An_end = find(AS>index) + 1; %end of analysis
+    Max_Analysis_index = An_end(end);
+%     %manually select where is the max force by clicking
+%     Max_Analysis_index =input('What is the index of the last data before recovery? ');
+    %truncating recovery
+    original_File1_legth = size(File1);
+    loop_to_run = length(Max_Analysis_index:original_File1_legth(1) ) - 2;
+    for ii =  0:loop_to_run
+        File1(original_File1_legth(1) - ii,:) = [];  %deleting extra data beyong the selection
+    end
+    %plotting the  raw data and saving
+    figure(2)
+    hold on
+    Force_All = File1(:,2);
+    Indentation_all =  File1(:,4)- File1(:,3);
+    Max_Force_Index = find(Force_All == max(Force_All));
+    plot(Force_All);
+    plot(Max_Force_Index,Force_All(Max_Force_Index),'ks');
+    xlabel('Index')
+    ylabel('Force, uN')
+    saveas(gcf,'Raw data in use','jpg')
+    
+    time=File1(Min_Analysis_index:Max_Analysis_index,1)/1000 ;%converted to second
+    force=File1(Min_Analysis_index:Max_Analysis_index,2)/1000000 ;%converted to Newton
+    
+    figure(3)
+    hold on
+    plot(time,force,'o','LineWidth',1.5,'MarkerSize',4,'MarkerEdgeColor','g') % Plotting raw data
+    
+    title('Force-Relaxation Curve Fit','FontSize',12,'FontWeight','bold')
+    xlabel('Time, s','FontSize',12,'FontWeight','bold')
+    ylabel('Force, uN','FontSize',12,'FontWeight','bold')
+    
+    %%
+    %fitting with force-time curve
+    dif_force = (force-force(end)); %relaxed forces at times
+    log_force = real(log(dif_force)); % ln of relaxed force
+    j = find(dif_force==0); % at the end the dif_force becomes zero which needs to be skipped
+    %taking the data before 0
+    time_new = time(1:j-1);
+    logforce_new = log_force(1:j-1);
+    force_new = force(1:j-1);
+    %%
+    %Showing curve fits
+    figure (4)
+    plot(time_new,logforce_new);%ln of relaxation vs time curve
+    hold on
+    P = polyfit(time_new,logforce_new,1);
+    slope = P(1) %slope of fitted curve
+    intercept = P(2) %y intercept of fitted curve
+    plot(time_new,slope *time_new + intercept); % curve using our estimated parameters
+    title('Force Relaxation Curve Fitting','FontSize',12,'FontWeight','bold')
+    xlabel('Time, s','FontSize',12,'FontWeight','bold')
+    ylabel('Ln of Relaxed Force, N','FontSize',12,'FontWeight','bold')
+    legend({'Raw Data','Scaled Nonlinear Fit'},'Location','NorthEast','FontSize',12,'FontWeight','bold')
+    
+    %%fitting parameters
+    A1= exp(intercept);
+    tau1 = - (1/slope);
+    %% Nonlinear Curve Fit
+    figure (5)
+    plot(time_new,force_new);
+    hold on
+    plot(time_new,force(length(force)) + A1 * exp(-(time_new/tau1)));
+    title('Force-Relaxation Curve Fit','FontSize',12,'FontWeight','bold')
+    xlabel('Time, s','FontSize',12,'FontWeight','bold')
+    ylabel('Force, N','FontSize',12,'FontWeight','bold')
+    legend({'Raw Data','Scaled Nonlinear Fit'},'Location','NorthEast','FontSize',12,'FontWeight','bold')
+    saveas(gcf,'Force-Relaxation Curve Fit','jpg')
+    
+    %% Calculating Force-Relaxation Parameters
+    TotalForceRelaxed = force(1) - force(length(force));
+    RelaxationRate = TotalForceRelaxed/10 ; % unit = [uN/s]
+    HalfTimeForce = (force(length(force)) + force(1)) / 2 ;
+    HalfTimeRelax = (-tau1*(log((HalfTimeForce-force(length(force)) )/A1)) - (File1(Min_Analysis_index, 1)/1000))% (File1(Min_Analysis_index, 1) is the time of loading
+    
+    %% Relaxation Modulus
+    forceN = force;  % Convert force to Newtons
+    displacement=File1(Min_Analysis_index:Max_Analysis_index,3) ;
+    displacementM = displacement * 10^-6; %Converts displacement to meters
+    d_hold=displacementM(1) ;
+    Radius = 10^-6 * input('What is the Diameter in um? ')/2;    % Radius of spheroid             %%% NEED TO CHANGE SPHEROID RADIUS FOR EACH TEST!!!
+    nu = 0.49;              % Poisson's Ratio for soft tissue
+    Erel = (3/4)*(forceN.*(1-nu^2))/(sqrt(Radius)*(d_hold^(3/2))); % Time-dependent relaxation modulus Erel(t)
+    Ess = Erel(end);        % Steady-state modulus Ess
+    %%curve fitting %comments will be the same as force part
+    dif_E = (Erel - Ess);
+    log_E = real(log(dif_E));
+    j = find(dif_E==0);
+    time_new = time(1:j-1);
+    logE_new = log_E(1:j-1);
+    Erel_new = Erel(1:j-1);
+    plot(time_new,logE_new);
+    
+    P = polyfit(time_new,logE_new,1);
+    slope = P(1);
+    eta = -(1/slope); %decay constant
+    intercept = P(2);
+    plot(time_new,slope *time_new + intercept);
+    E_k = exp(intercept); % kelvin element modulus
+    figure (6)
+    plot(time_new,Erel_new);
+    hold on
+    plot(time_new,Erel(length(Erel)) + E_k * exp(-(time_new/eta)));
+    title('Relaxation Modulus','FontSize',12,'FontWeight','bold')
+    xlabel('Time, s','FontSize',12,'FontWeight','bold')
+    ylabel('Relaxation Modulus, Pa','FontSize',12,'FontWeight','bold')
+    legend({'Raw Data','Scaled Nonlinear Fit'},'Location','NorthEast','FontSize',12,'FontWeight','bold')
+    saveas(gcf,'Relaxation Modulus','jpg')
+    %% Calculating Force-Relaxation Parameters
+    PercentTotalRelaxedMod = ((max(Erel) - Ess) / max(Erel)) * 100 ;
+    Viscosity = E_k*eta ;
+    
+    
+    %%
+    % Finding values for A_rel and tau_rel that minimize the error function
+    %%% A_rel = Modulus of the spring in the Maxwell arm of SLS model (unit=[Pa])
+    %%% tau_rel = Characteristic time decay constant (unit = [s])
+    
+    
+    %% Calculating Force-Relaxation Parameters
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    datas(1,sheet-2) = A1;
+    datas(2,sheet-2) = tau1;
+    datas(3,sheet-2) = TotalForceRelaxed;
+    datas(4,sheet-2) = RelaxationRate;
+    datas(5,sheet-2) = HalfTimeRelax;
+    datas(6,sheet-2) = E_k;
+    datas(7,sheet-2) = eta;
+    datas(8,sheet-2) = Ess;
+    datas(9,sheet-2) = PercentTotalRelaxedMod;
+    datas(10,sheet-2) = Viscosity;
+    drawnow
+end
+
+xlswrite('datas.xls',datas,'Data','B2');
+xlswrite('datas.xls',names,'Data','B1');
+xlswrite('datas.xls',["File_names";"A";"tau";"Total Relaxed Force (uN)";...
+    "Relaxation Rate (uN/s)";"Half-Time Relaxation (s)";...
+    "A for Relaxation Modulus";...
+    "Characteristic Time Decay Constant (tau) for Relaxation Modulus";...
+    "Steady State Modulus (Pa)";...
+    "% Total Relaxed Modulus";"Viscosity"],'Data','A1')
