@@ -1,0 +1,138 @@
+%% M Subbir Parvej
+%matlab R2020b
+% MicroSquisher_Spheroids_Hertz.m
+% Modified from: 
+    % Rachel Dass
+    % MicroSquisher_Combined.m
+    %rov : updated Nov 20, 2024
+
+%% This code finds sample modulus by fitting a Hertz curve to the raw force values from the Microsquisher
+close all;clear all;clc
+files = dir;
+names = [];
+datas = zeros(6,size(files,1)-2);
+for sheet = 3: size(files,1)
+
+names =[names string(strcat(files(sheet).name))];
+File1 = xlsread(strcat(files(sheet).name));        
+moveavg = [];
+rawForce = File1(:,2);
+figure(1)
+plot(rawForce)
+xlabel('Index')
+ylabel('Force (uN)')
+
+% rov
+i = 10 % 5 is a random number to calculate rov. you may change if your point number in force is far more than 60
+maxforce = [find(rawForce == max(rawForce))]; %%finds max value positon 
+rov = [];
+force= rawForce(1: maxforce)
+for j = i+1 : length(force)-i-1
+    rov(j) = var(force(j+1:j+i))/var(force(j-i:j-1))
+end
+figure(2)
+plot(rov)
+xlabel('Index')
+ylabel('ROV')
+maxrov = [find(rov == max(rov))]; %%finds max rov index and value of rov
+figure(3)
+plot(force)
+hold on
+scatter(maxrov, rawForce(maxrov),'ks')
+hold on 
+plot(find(rawForce == max(rawForce(:))),max(rawForce),'mo')
+xlabel('Index')
+ylabel('Force (uN)')
+
+%%
+
+%%%% Plotting
+%FIRST = 1
+figure(1)
+plot(rawForce)
+hold on
+scatter(maxrov, rawForce(maxrov),'ks')
+hold on 
+plot(find(rawForce == max(rawForce(:))),max(rawForce),'mo')
+xlabel('Index')
+ylabel('Force (uN)')
+saveas(gcf,'Raw data','jpg')
+
+%% Variables to  change
+Diameter = 10^-6 * input('What is the Diameter in um? ')
+Radius = Diameter/2;  %m
+nu = 0.49; %Poisson's Ratio for typical soft tissue
+
+%%modify the index of contact point, i.e. insex of force array where cntact happened, if you did not like our determined contact point of sample and indenter.
+%maxrov = 10
+
+%% Loading Phase Graphs
+Position = File1(maxrov:find(rawForce == max(rawForce(:))),3);          %Force (uN)
+Position = Position * 10^-6;                      %Converts to meters from um
+ExtraTip = ones(length(Position),1)*Position(1);  %Extra portion before contact
+Position = Position-ExtraTip;                     %Remove extra/offseting position
+
+%Strain
+%Strain = Position./0.003;
+
+%PositionT = Position(:);
+Force = File1(maxrov:find(rawForce == max(rawForce(:))),2);
+ExtraForce = ones(length(Force),1)*Force(1);   %Extra portion before contact
+Force = Force-ExtraForce;                       %Remove extra
+Force = Force * 1e-6; %Convert to Newtons
+%Force = Force - mean(Force(1:100)); %Normalizes the starting location based on first second of datapoints
+
+%%%%%%%%%%%%%%%%%
+%Subbir starts
+x1_data = Position;
+y1_data = Force;
+x1=real(sqrt(Radius.*x1_data.^3));
+y1=real((3*(1-(nu)^2)/4).*y1_data);
+
+figure(4)
+plot(x1,y1);
+linearfittype = fittype({'x'});
+f1 = fit(x1,y1,linearfittype);
+p1 = coeffvalues(f1);
+disp('Elastic Modulus (kPa)');
+E=p1/1000
+hold on
+plot(x1,p1 * x1,'r');
+title('Fit observation between Theoretical and Experimental Curve')
+xlabel('sqrt(r*x1ofData^3)')
+ylabel('(3*(1-v^2)/4)*y1ofData')
+
+    %RSQ
+    avg = mean(y1);
+    x = sum((y1 - avg).^2);
+    SSE = sum((p1 * x1 -y1).^2);
+    RSQ = (1 - SSE/x)*100
+    
+    figure(5)
+plot(Position*10^6,Force*10^6);
+xlabel('Indentation Depth(um)')
+ylabel('Force (uN)')
+hold on
+%adding hertz curve
+hold on
+plot(Position*10^6,10^6*(E*10^3*(Radius^.5)/(0.75*(1-(nu)^2))*(Position.^1.5)));
+legend('Experiment','Hertz')
+saveas(gcf,'Force vs Indentation','jpg')
+%Subbir ends
+
+%% Generating Excel Sheet with Data
+%%%%%%%%%%%%%%%%%%%%%
+datas(1,sheet-2) = max(rawForce);
+datas(2,sheet-2) = mean(find(rawForce == max(rawForce(:))));
+datas(3,sheet-2) = rawForce(FIRST*10);
+datas(4,sheet-2) = FIRST*10;     
+datas(5,sheet-2) = p1;                 %% modulus in Pa from loading curve (indentation modulus)
+datas(6,sheet-2) = RSQ;
+drawnow
+end
+%plot(((2:length(moveavg)))*10,diff(moveavg))
+%plot(((3:length(moveavg)))*10,diff(diff(moveavg)))
+xlswrite('datas.xls',datas,'Data','B2');
+xlswrite('datas.xls',names,'Data','B1');
+xlswrite('datas.xls',["File_names";"Max_value";"Max_value_location";"Start_of_curve_value";...
+    "Start_of_curve_value_location";"Indentation Modulus(Pa)";"Fit quality (RSQ)"],'Data','A1')
